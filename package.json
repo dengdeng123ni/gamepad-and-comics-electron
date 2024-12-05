@@ -1,0 +1,23 @@
+{ 
+  "name": "gamepad-and-comics-electron",
+  "version": "1.0.0",
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.2.1"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "electron-fetch": "^1.9.1",
+    "express": "^4.21.1",
+    "global-agent": "^3.0.0",
+    "global-tunnel-ng": "^2.7.1",
+    "https-proxy-agent": "^7.0.5",
+    "node-fetch": "^3.3.2",
+    "puppeteer": "^23.10.0",
+    "system-proxy": "^2.0.0"
+  }
+}
