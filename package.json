@@ -1,23 +1,52 @@
-{ 
+{
   "name": "gamepad-and-comics-electron",
   "version": "1.0.0",
+  "description": "一款离线漫画阅读器，支持多种控制方式，包括键盘、手柄、鼠标和语音。帮助用户更轻松地阅读本地漫画，同时支持通过插件和 API 对接在线漫画平台，实现丰富的阅读体验。",
+  "author": "dengdeng123ni <2648736010@qq.com>",
   "main": "main.js",
   "license": "MIT",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "gamepad-and-comics-v3.app",
+    "productName": "游戏手柄与漫画",
+    "directories": {
+      "output": "dist"
+    },
+    "icon": "icons/icon",
+    "files": [
+      "public/**/*",
+      "main.js",
+      "preload.js"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   },
   "devDependencies": {
-    "electron": "^33.2.1"
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
   },
   "dependencies": {
-    "axios": "^1.7.9",
+    "body-parser": "^1.20.3",
+    "cors": "^2.8.5",
     "electron-fetch": "^1.9.1",
     "express": "^4.21.1",
     "global-agent": "^3.0.0",
     "global-tunnel-ng": "^2.7.1",
     "https-proxy-agent": "^7.0.5",
     "node-fetch": "^3.3.2",
+    "open": "^10.1.0",
     "puppeteer": "^23.10.0",
-    "system-proxy": "^2.0.0"
+    "system-proxy": "^2.0.0",
+    "ws": "^8.18.0"
   }
 }

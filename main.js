@@ -1,10 +1,83 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('node:path')
-const express = require('express')
 const { execSync } = require('child_process')
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const puppeteer = require('puppeteer');
+const https = require('https');
+const fs = require('fs');
+const os = require('os');
+
 browser = false;
+
+
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+
+const server = express();
+const PORT = process.env.PORT || 7708;
+
+server.use(cors());
+// 使用 bodyParser 中间件解析请求体
+server.use(express.json({ limit: '50mb' }));
+
+server.use(bodyParser.json());
+server.use(bodyParser.urlencoded({ extended: true }));
+
+const getIpAddress = () => {
+    const interfaces = os.networkInterfaces();
+    let ip = '';
+
+    // 遍历网络接口，查找非回环地址
+    for (const iface in interfaces) {
+        for (const details of interfaces[iface]) {
+            if (details.family === 'IPv4' && !details.internal) {
+                ip = details.address;
+                break;
+            }
+        }
+        if (ip) break;
+    }
+    return ip || 'localhost'; // 如果没有找到 IP，默认使用 localhost
+};
+
+// 处理 POST 请求
+server.post('/api/local/send', async (req, res) => {
+    const requestBody = req.body;
+    const data = await getWebLocal(requestBody)
+    res.json(data);
+});
+
+server.get('/api/local/getAll', async (req, res) => {
+    res.json([
+        {
+            id: "_420000000000",
+            name: "手柄与漫画程序应用"
+        }
+    ]);
+});
+
+// 启动服务器
+server.use(express.static(path.join(__dirname, 'public/browser')));
+// // 处理 SPA 客户端路由
+server.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/browser/index.html'));
+});
+
+server.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+});
+
+const options = {
+    key: fs.readFileSync(path.join(__dirname,'public/ssl/key.pem')),
+    cert: fs.readFileSync(path.join(__dirname,'public/ssl/cert.pem'))
+};
+
+// 创建 HTTPS 服务
+const ipAddress = getIpAddress();
+https.createServer(options, server).listen(7707, ipAddress, () => {
+    console.log(`HTTPS server running on https://${ipAddress}:3230`);
+});
 async function init() {
     browser = await puppeteer.launch({
         defaultViewport: null, // 设置为 null 窗口会最大化
@@ -12,7 +85,9 @@ async function init() {
         executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     });
 }
+
 init()
+
 async function getHtml(url) {
     const page = await browser.newPage();
     await page.goto(url);
@@ -43,18 +118,10 @@ function getMacWebProxy() {
 
     return null
 }
-// 创建一个 Express 应用
-const serverApp = express();
-serverApp.use(express.static(path.join(__dirname, 'dist/browser')));
-const PORT = process.env.PORT || 3000;
-serverApp.listen(PORT, () => {
-    console.log(`Express server running at http://localhost:${PORT}`);
-});
 
 async function fetchc(url, options = {}) {
     const fetch = (await import('node-fetch')).default;
     const f = getMacWebProxy();
-    console.log(f);
     let obj = {}
     if (f) obj["agent"] = new HttpsProxyAgent(f)
     const res = await fetch(url, obj)
@@ -97,15 +164,24 @@ async function readStreamToString(response) {
     const uint8Array = new Uint8Array(arrayBuffer);
     return uint8Array;
 }
+let _gh_data = {};
 
+let win;
 // 创建 Electron 窗口
 function createWindow() {
-    const win = new BrowserWindow({
+
+    win = new BrowserWindow({
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: true,  // 开启 Node.js 集成
-        }
+        },
+        backgroundColor: '#303030',
+       
+        show: false
     });
+    // frame: false,  // 使窗口无边框 
+    // transparent: true,
+
     win.webContents.openDevTools();
     ipcMain.on('message-from-renderer', async (event, arg) => {
         if (arg.type == "pulg_proxy_request") {
@@ -135,17 +211,74 @@ function createWindow() {
             const data = await executeEval(arg.proxy_request_website_url, arg.javascript);
             let res = { data: data, type: 'execute_script_data', id: arg.id }
             event.reply('message-from-main', res);
+        } else if (arg.type == "electron_receive_local") {
+            _gh_data[arg.id] = arg.data;
+            setTimeout(() => {
+                _gh_data[arg.id] = undefined;
+            }, 10000)
         }
+
     });
-    win.loadURL(`http://localhost:${PORT}`);
+   
+    win.loadURL(`http://localhost:${PORT}?config=${objectToBase64({"local_network_url":`https://${ipAddress}:${7707}`})}`);
+
+    win.webContents.on('did-finish-load', () => {
+        win.show();  // 页面加载完成后显示窗口
+    });
+    cc();
+}
+function objectToBase64(obj) { 
+    const jsonString = JSON.stringify(obj); 
+    const encodedString = encodeURIComponent(jsonString); 
+    const base64String = Buffer.from(encodedString, 'utf-8').toString('base64');
+
+    return base64String;
 }
 
-// 等待 Electron 启动完成后再创建窗口
+const getWebLocal = (e) => {
+    const id = Math.random().toString(36).substring(2, 9)
+    win.webContents.send('message-from-main', {
+        send_client_id: e.send_client_id,
+        receiver_client_id: e.receiver_client_id,
+        type: "electron_send_local",
+        data: e.data,
+        id
+    })
+    let bool = true;
+    return new Promise((r, j) => {
+        const getData = () => {
+            setTimeout(() => {
+                if (_gh_data[id]) {
+                    bool = false;
+                    r(_gh_data[id])
+                } else {
+                    if (bool) getData()
+                }
+            }, 33)
+        }
+        getData()
+
+        setTimeout(() => {
+            if (bool) {
+                bool = false;
+                r(null)
+                j(null)
+            }
+            _gh_data[id] = undefined;
+        }, 40000)
+    })
+}
+
+
+async function cc() {
+    const open = (await import('open')).default;
+}
+
 app.whenReady().then(() => {
+
     createWindow();
 
     app.on('activate', () => {
-        // 在 macOS 上，点击 dock 图标时如果没有窗口，则创建一个新窗口
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
         }
