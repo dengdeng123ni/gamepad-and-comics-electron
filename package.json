@@ -40,6 +40,7 @@
     "cors": "^2.8.5",
     "electron-fetch": "^1.9.1",
     "express": "^4.21.1",
+    "get-proxy-settings": "^0.1.13",
     "global-agent": "^3.0.0",
     "global-tunnel-ng": "^2.7.1",
     "https-proxy-agent": "^7.0.5",

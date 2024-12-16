@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('node:path')
 const { execSync } = require('child_process')
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const { getProxySettings, getAndTestProxySettings } = require("get-proxy-settings");
 const puppeteer = require('puppeteer');
 const https = require('https');
 const fs = require('fs');
@@ -69,8 +70,8 @@ server.listen(PORT, () => {
 });
 
 const options = {
-    key: fs.readFileSync(path.join(__dirname,'public/ssl/key.pem')),
-    cert: fs.readFileSync(path.join(__dirname,'public/ssl/cert.pem'))
+    key: fs.readFileSync(path.join(__dirname, 'public/ssl/key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, 'public/ssl/cert.pem'))
 };
 
 // 创建 HTTPS 服务
@@ -103,7 +104,14 @@ async function executeEval(url, js) {
     }, js);
     return res
 }
+async function getWindowWebProxy() {
+    const res = await getProxySettings()
+    if (res)`http://${res.http.host}:${res.http.port}`
+    else null
+}
 function getMacWebProxy() {
+
+
     // 这种方法需要考虑到用户使用不同网卡的情况，Wi-Fi 是网络设备名称，对于使用有线网卡的用户，可能需要替换成 Ethernet 等适当的名称
     const cmd = 'networksetup -getwebproxy "Wi-Fi"'
     const output = execSync(cmd).toString()
@@ -121,7 +129,14 @@ function getMacWebProxy() {
 
 async function fetchc(url, options = {}) {
     const fetch = (await import('node-fetch')).default;
-    const f = getMacWebProxy();
+
+    let f = null;
+    if (os.platform() === "win32") {
+        f = await getWindowWebProxy()
+    } else {
+        f = getMacWebProxy();
+    }
+
     let obj = {}
     if (f) obj["agent"] = new HttpsProxyAgent(f)
     const res = await fetch(url, obj)
@@ -176,7 +191,7 @@ function createWindow() {
             nodeIntegration: true,  // 开启 Node.js 集成
         },
         backgroundColor: '#303030',
-       
+
         show: false
     });
     // frame: false,  // 使窗口无边框 
@@ -219,17 +234,17 @@ function createWindow() {
         }
 
     });
-   
-    win.loadURL(`http://localhost:${PORT}?config=${objectToBase64({"local_network_url":`https://${ipAddress}:${7707}`})}`);
+
+    win.loadURL(`http://localhost:${PORT}?config=${objectToBase64({ "local_network_url": `https://${ipAddress}:${7707}` })}`);
 
     win.webContents.on('did-finish-load', () => {
         win.show();  // 页面加载完成后显示窗口
     });
     cc();
 }
-function objectToBase64(obj) { 
-    const jsonString = JSON.stringify(obj); 
-    const encodedString = encodeURIComponent(jsonString); 
+function objectToBase64(obj) {
+    const jsonString = JSON.stringify(obj);
+    const encodedString = encodeURIComponent(jsonString);
     const base64String = Buffer.from(encodedString, 'utf-8').toString('base64');
 
     return base64String;
