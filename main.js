@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain ,Menu} = require('electron')
 const path = require('node:path')
 const { execSync } = require('child_process')
 const { HttpsProxyAgent } = require('https-proxy-agent');
@@ -106,7 +106,7 @@ async function executeEval(url, js) {
 }
 async function getWindowWebProxy() {
     const res = await getProxySettings()
-    if (res)`http://${res.http.host}:${res.http.port}`
+    if (res) return `http://${res.http.host}:${res.http.port}`
     else null
 }
 function getMacWebProxy() {
@@ -188,16 +188,18 @@ function createWindow() {
     win = new BrowserWindow({
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
-            nodeIntegration: true,  // 开启 Node.js 集成
-        },
+            nodeIntegration: true,  // 开启 Node.jsss 集成
+        }, 
         backgroundColor: '#303030',
 
         show: false
     });
+    Menu.setApplicationMenu(null); 
+
     // frame: false,  // 使窗口无边框 
     // transparent: true,
 
-    win.webContents.openDevTools();
+    // win.webContents.openDevTools();
     ipcMain.on('message-from-renderer', async (event, arg) => {
         if (arg.type == "pulg_proxy_request") {
             let request = arg;
