@@ -7,6 +7,7 @@ const puppeteer = require('puppeteer');
 const https = require('https');
 const fs = require('fs');
 const os = require('os');
+const net = require('net');
 
 browser = false;
 
@@ -25,6 +26,60 @@ server.use(express.json({ limit: '50mb' }));
 server.use(bodyParser.json());
 server.use(bodyParser.urlencoded({ extended: true }));
 
+
+server.post('/api/local/eval', async (req, res) => {
+    const requestBody = req.body;
+    const data = await getWebLocal(requestBody)
+    res.json(data);
+});
+// 处理 POST 请求
+server.post('/api/local/send', async (req, res) => {
+    const requestBody = req.body;
+    const data = await getWebLocal(requestBody)
+    res.json(data);
+});
+
+server.get('/api/local/getAll', async (req, res) => {
+    res.json([
+        {
+            id: "_420000000000",
+            name: "手柄与漫画程序应用"
+        }
+    ]);
+});
+
+server.get('/api/win/focused', async (req, res) => {
+    win.show()
+    res.json([]);
+});
+
+// 启动服务器
+server.use(express.static(path.join(__dirname, 'public/browser')));
+// // 处理 SPA 客户端路由
+server.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/browser/index.html'));
+});
+function isPortInUse(port, host = '127.0.0.1') {
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+
+        server.once('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                resolve(true); // 端口被占用
+            } else {
+                reject(err); // 其他错误
+            }
+        });
+
+        server.once('listening', () => {
+            server.close(); // 如果成功监听，则关闭服务器
+            resolve(false); // 端口未被占用
+        });
+
+        server.listen(port, host);
+    });
+}
+
 const getIpAddress = () => {
     const interfaces = os.networkInterfaces();
     let ip = '';
@@ -42,48 +97,11 @@ const getIpAddress = () => {
     return ip || 'localhost'; // 如果没有找到 IP，默认使用 localhost
 };
 
-// 处理 POST 请求
-server.post('/api/local/send', async (req, res) => {
-    const requestBody = req.body;
-    const data = await getWebLocal(requestBody)
-    res.json(data);
-});
 
-server.get('/api/local/getAll', async (req, res) => {
-    res.json([
-        {
-            id: "_420000000000",
-            name: "手柄与漫画程序应用"
-        }
-    ]);
-});
-
-// 启动服务器
-server.use(express.static(path.join(__dirname, 'public/browser')));
-// // 处理 SPA 客户端路由
-server.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public/browser/index.html'));
-});
-
-server.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
-
-const options = {
-    key: fs.readFileSync(path.join(__dirname, 'public/ssl/key.pem')),
-    cert: fs.readFileSync(path.join(__dirname, 'public/ssl/cert.pem'))
-};
-
-// 创建 HTTPS 服务
-const ipAddress = getIpAddress();
-https.createServer(options, server).listen(7707, ipAddress, () => {
-    console.log(`HTTPS server running on https://${ipAddress}:3230`);
-});
 async function init() {
     browser = await puppeteer.launch({
         defaultViewport: null, // 设置为 null 窗口会最大化
-        args: ['--start-maximized'], // 启动时最大化窗口
-        executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        args: ['--start-maximized'], // 启动时最大化窗口 
     });
 }
 
@@ -110,8 +128,6 @@ async function getWindowWebProxy() {
     else null
 }
 function getMacWebProxy() {
-
-
     // 这种方法需要考虑到用户使用不同网卡的情况，Wi-Fi 是网络设备名称，对于使用有线网卡的用户，可能需要替换成 Ethernet 等适当的名称
     const cmd = 'networksetup -getwebproxy "Wi-Fi"'
     const output = execSync(cmd).toString()
@@ -129,14 +145,12 @@ function getMacWebProxy() {
 
 async function fetchc(url, options = {}) {
     const fetch = (await import('node-fetch')).default;
-
     let f = null;
     if (os.platform() === "win32") {
         f = await getWindowWebProxy()
     } else {
         f = getMacWebProxy();
     }
-
     let obj = {}
     if (f) obj["agent"] = new HttpsProxyAgent(f)
     const res = await fetch(url, obj)
@@ -183,8 +197,28 @@ let _gh_data = {};
 
 let win;
 // 创建 Electron 窗口
-function createWindow() {
+async function createWindow() {
+    server.listen(PORT, () => {
+        console.log(`Server is running on http://localhost:${PORT}`);
+    });
+    // 监听 error 事件
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(`端口 ${PORT} 已被占用，请使用其他端口。`);
+        } else {
+            console.error('服务器错误：', err);
+        }
+    });
+    const options = {
+        key: fs.readFileSync(path.join(__dirname, 'public/ssl/key.pem')),
+        cert: fs.readFileSync(path.join(__dirname, 'public/ssl/cert.pem'))
+    };
 
+    // 创建 HTTPS 服务
+    const ipAddress = getIpAddress();
+    https.createServer(options, server).listen(7707, ipAddress, () => {
+        console.log(`HTTPS server running on https://${ipAddress}:3230`);
+    });
     win = new BrowserWindow({
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -195,11 +229,8 @@ function createWindow() {
         show: false
     });
     Menu.setApplicationMenu(null);
+    win.webContents.openDevTools();
 
-    // frame: false,  // 使窗口无边框 
-    // transparent: true,
-
-    // win.webContents.openDevTools();
     ipcMain.on('message-from-renderer', async (event, arg) => {
         if (arg.type == "pulg_proxy_request") {
             let request = arg;
@@ -233,6 +264,10 @@ function createWindow() {
             setTimeout(() => {
                 _gh_data[arg.id] = undefined;
             }, 10000)
+        } else if (arg.type == "window_open") {
+            console.log(arg);
+
+            open(arg.url)
         }
 
     });
@@ -242,8 +277,8 @@ function createWindow() {
     win.webContents.on('did-finish-load', () => {
         win.show();  // 页面加载完成后显示窗口
     });
-    cc();
 }
+
 function objectToBase64(obj) {
     const jsonString = JSON.stringify(obj);
     const encodedString = encodeURIComponent(jsonString);
@@ -287,20 +322,31 @@ const getWebLocal = (e) => {
 }
 
 
-async function cc() {
+async function open(url) {
     const open = (await import('open')).default;
+    open(url)
 }
 
-app.whenReady().then(() => {
+const gotTheLock = app.requestSingleInstanceLock();
 
-    createWindow();
+async function win_quit() {
+    const fetch = (await import('node-fetch')).default;
+    await fetch("http://127.0.0.1:7708/api/win/focused")
+    app.quit(); // 退出当前实例 
+}
 
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
-        }
+if (!gotTheLock) {
+    win_quit()
+} else {
+    app.whenReady().then(() => {
+        createWindow();
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) {
+                createWindow();
+            }
+        });
     });
-});
+}
 
 // 在所有窗口关闭时退出应用
 app.on('window-all-closed', () => {
@@ -308,6 +354,3 @@ app.on('window-all-closed', () => {
         app.quit();
     }
 });
-
-
-
