@@ -301,7 +301,7 @@ async function createWindow() {
         show: false
     });
     Menu.setApplicationMenu(null);
-    win.webContents.openDevTools();
+    // win.webContents.openDevTools();
 
     ipcMain.on('message-from-renderer', async (event, arg) => {
         if (arg.type == "pulg_proxy_request") {

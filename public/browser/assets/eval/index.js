@@ -49,8 +49,8 @@ class MessageFetchService {
         window.open=this.open;
       }
   }
-  open=(url)=>{ 
-    this.postMessage({ 
+  open=(url)=>{
+    this.postMessage({
         type: "window_open",
         url: url
     });
