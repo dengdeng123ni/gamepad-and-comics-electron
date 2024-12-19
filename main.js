@@ -215,7 +215,6 @@ let _gh_data = {};
 
 let win;
 
-const wss = new WebSocket.Server({ port: 7703 });
 const clients = new Map();
 let arr = [] 
 
@@ -223,6 +222,8 @@ let arr = []
 
 // 创建 Electron 窗口
 async function createWindow() {
+
+    const wss = new WebSocket.Server({ port: 7703 });
     wss.on('listening', () => {
         const address = wss.address();
         console.log('WebSocket 服务器已启动');
