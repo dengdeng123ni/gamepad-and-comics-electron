@@ -8,6 +8,8 @@ const https = require('https');
 const fs = require('fs');
 const os = require('os');
 const net = require('net');
+const { Blob } = require('buffer');
+const WebSocket = require('ws');
 
 browser = false;
 
@@ -51,6 +53,22 @@ server.get('/api/local/getAll', async (req, res) => {
 server.get('/api/win/focused', async (req, res) => {
     win.show()
     res.json([]);
+});
+server.get('/api/ws/getAll', async (req, res) => {
+    let ids = [];
+    for (const [clientId, ws] of clients) {
+        if (ws.readyState === WebSocket.OPEN) {
+            ids.push(clientId)
+        }
+    }
+    const json = arr.filter(x => ids.includes(x.id))
+    res.json(json);
+});
+
+server.post('/api/ws/send', async (req, res) => {
+    const requestBody = req.body;
+    const data = await getWsLocal(requestBody)
+    res.json(data);
 });
 
 // 启动服务器
@@ -196,8 +214,62 @@ async function readStreamToString(response) {
 let _gh_data = {};
 
 let win;
+
+const wss = new WebSocket.Server({ port: 7703 });
+const clients = new Map();
+let arr = [] 
+
+
+
 // 创建 Electron 窗口
 async function createWindow() {
+    wss.on('listening', () => {
+        const address = wss.address();
+        console.log('WebSocket 服务器已启动');
+        console.log(`监听地址: ${address.address}`);
+        console.log(`监听端口: ${address.port}`);
+    });
+    
+    wss.on('connection', async (ws) => {
+        ws.on('message', async (blob) => {
+            const text = await new Blob([blob]).text();
+            const c = JSON.parse(text);
+            if (c.type == "init") {
+                clients.set(c.id, ws);
+                arr.push({ id: c.id, name: c.name })
+                const jsonData = { type: "init", name: c.name, id: c.id };
+                const jsonString = JSON.stringify(jsonData);
+                const blob = new Blob([jsonString], { type: "application/json" })
+                ws.send(blob);
+            } else if (c.type == "get_all_client") {
+                let ids = [];
+                for (const [clientId, ws] of clients) {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ids.push(clientId)
+                    }
+                }
+    
+                const res = arr.filter(x => ids.includes(x.id))
+                const jsonData = { type: "get_all_client", id: c.id, data: res };
+                const jsonString = JSON.stringify(jsonData);
+                const blob = new Blob([jsonString], { type: "application/json" })
+                ws.send(blob);
+            } else if (c.type == "send") {
+                const b = clients.get(c.receiver_client_id);
+                if (b) b.send(blob)
+            } else if (c.type == "receive") {
+                const b = clients.get(c.receiver_client_id);
+                if (b) b.send(blob)
+            } else if (c.type=="http_receive") {
+                _gh_data[c.id]=c.data;
+            }
+        });
+        ws.on('close', () => {
+        });
+        ws.on('error', (error) => {
+            console.error('WebSocket error:', error);
+        });
+    });
     server.listen(PORT, () => {
         console.log(`Server is running on http://localhost:${PORT}`);
     });
@@ -320,6 +392,48 @@ const getWebLocal = (e) => {
         }, 40000)
     })
 }
+
+const getWsLocal = (e) => { 
+    const id = Math.random().toString(36).substring(2, 9)
+    const b = clients.get(e.receiver_client_id);
+    if (b) {
+        const jsonString = JSON.stringify({
+            send_client_id: e.send_client_id,
+            receiver_client_id: e.receiver_client_id,
+            type: "http_send",
+            data: e.data,
+            id
+        });
+        const blob = new Blob([jsonString], { type: "application/json" })
+        console.log(b);
+        
+        b.send(blob)
+    }
+    let bool = true;
+    return new Promise((r, j) => {
+        const getData = () => {
+            setTimeout(() => {
+                if (_gh_data[id]) {
+                    bool = false;
+                    r(_gh_data[id])
+                } else {
+                    if (bool) getData()
+                }
+            }, 33)
+        }
+        getData()
+
+        setTimeout(() => {
+            if (bool) {
+                bool = false;
+                r(null)
+                j(null)
+            }
+            _gh_data[id] = undefined;
+        }, 40000)
+    })
+}
+
 
 
 async function open(url) {
