@@ -24,10 +24,12 @@ const PORT = process.env.PORT || 7708;
 server.use(cors());
 // 使用 bodyParser 中间件解析请求体
 server.use(express.json({ limit: '50mb' }));
-
 server.use(bodyParser.json());
 server.use(bodyParser.urlencoded({ extended: true }));
 
+server.get('/api/ping', async (req, res) => {
+    res.json([]);
+});
 
 server.post('/api/local/eval', async (req, res) => {
     const requestBody = req.body;
@@ -68,6 +70,11 @@ server.get('/api/ws/getAll', async (req, res) => {
 server.post('/api/ws/send', async (req, res) => {
     const requestBody = req.body;
     const data = await getWsLocal(requestBody)
+    res.json(data);
+});
+server.post('/api/ws/client/synamic/javascript', async (req, res) => {
+    const requestBody = req.body;
+    const data = await getWsEval(requestBody.client_id, requestBody.javascript)
     res.json(data);
 });
 
@@ -216,10 +223,7 @@ let _gh_data = {};
 let win;
 
 const clients = new Map();
-let arr = [] 
-
-
-
+let arr = []
 // 创建 Electron 窗口
 async function createWindow() {
 
@@ -230,11 +234,11 @@ async function createWindow() {
         console.log(`监听地址: ${address.address}`);
         console.log(`监听端口: ${address.port}`);
     });
-    
+
     wss.on('connection', async (ws) => {
         ws.on('message', async (blob) => {
             const text = await new Blob([blob]).text();
-            const c = JSON.parse(text);
+            const c = JSON.parse(text); 
             if (c.type == "init") {
                 clients.set(c.id, ws);
                 arr.push({ id: c.id, name: c.name })
@@ -249,7 +253,7 @@ async function createWindow() {
                         ids.push(clientId)
                     }
                 }
-    
+
                 const res = arr.filter(x => ids.includes(x.id))
                 const jsonData = { type: "get_all_client", id: c.id, data: res };
                 const jsonString = JSON.stringify(jsonData);
@@ -261,8 +265,10 @@ async function createWindow() {
             } else if (c.type == "receive") {
                 const b = clients.get(c.receiver_client_id);
                 if (b) b.send(blob)
-            } else if (c.type=="http_receive") {
-                _gh_data[c.id]=c.data;
+            } else if (c.type == "http_receive") {
+                _gh_data[c.id] = c.data;
+            } else if (c.type == "http_receive_eval") {
+                _gh_data[c.id] = c.data;
             }
         });
         ws.on('close', () => {
@@ -286,7 +292,6 @@ async function createWindow() {
         key: fs.readFileSync(path.join(__dirname, 'public/ssl/key.pem')),
         cert: fs.readFileSync(path.join(__dirname, 'public/ssl/cert.pem'))
     };
-
     // 创建 HTTPS 服务
     const ipAddress = getIpAddress();
     https.createServer(options, server).listen(7707, ipAddress, () => {
@@ -339,7 +344,6 @@ async function createWindow() {
             }, 10000)
         } else if (arg.type == "window_open") {
             console.log(arg);
-
             open(arg.url)
         }
 
@@ -394,7 +398,49 @@ const getWebLocal = (e) => {
     })
 }
 
-const getWsLocal = (e) => { 
+const getWsEval = (client_id, javascript) => {
+    const id = Math.random().toString(36).substring(2, 9)
+    const b = clients.get(client_id); 
+    if (b) {
+        const jsonString = JSON.stringify({
+            client_id: client_id,
+            type: "http_send_eval",
+            javascript: javascript,
+            id
+        });
+        const blob = new Blob([jsonString], { type: "application/json" })
+        b.send(blob)
+    }
+    let bool = true;
+    return new Promise((r, j) => {
+        const getData = () => {
+            setTimeout(() => {
+                if (_gh_data[id]) {
+                    bool = false;
+                    if(_gh_data[id]=="g93h_void"){
+                        r(null)
+                    }else{
+                        r(_gh_data[id])
+                    } 
+                } else {
+                    if (bool) getData()
+                }
+            }, 33)
+        }
+        getData()
+
+        setTimeout(() => {
+            if (bool) {
+                bool = false;
+                r(null)
+                j(null)
+            }
+            _gh_data[id] = undefined;
+        }, 40000)
+    })
+}
+
+const getWsLocal = (e) => {
     const id = Math.random().toString(36).substring(2, 9)
     const b = clients.get(e.receiver_client_id);
     if (b) {
@@ -406,8 +452,6 @@ const getWsLocal = (e) => {
             id
         });
         const blob = new Blob([jsonString], { type: "application/json" })
-        console.log(b);
-        
         b.send(blob)
     }
     let bool = true;
@@ -434,8 +478,6 @@ const getWsLocal = (e) => {
         }, 40000)
     })
 }
-
-
 
 async function open(url) {
     const open = (await import('open')).default;
