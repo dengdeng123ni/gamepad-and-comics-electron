@@ -27,8 +27,12 @@ server.use(express.json({ limit: '50mb' }));
 server.use(bodyParser.json());
 server.use(bodyParser.urlencoded({ extended: true }));
 
-server.get('/api/ping', async (req, res) => {
-    res.json([]);
+server.get('/api/get/ip', async (req, res) => {
+    const ipAddress = getIpAddress();
+    res.json({
+        IP: ipAddress,
+    });
+    
 });
 
 server.post('/api/local/eval', async (req, res) => {
